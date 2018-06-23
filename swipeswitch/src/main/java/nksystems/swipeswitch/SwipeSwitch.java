@@ -1,5 +1,6 @@
 package nksystems.swipeswitch;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -27,18 +28,19 @@ public class SwipeSwitch extends View implements View.OnTouchListener {
     Paint pillPaint;
     TextPaint pillSubTextPaint, pillMainTextPaint, contentSubTextPaint, contentMainTextPaint;
     Bitmap pillDrawable;
-    Float right = 0.0f;
-    Float minRight = 0.0f;
-    Float imageOffset = 0.0f;
+    float right = 0.0f;
+    float minRight = 0.0f;
+    float imageOffset = 0.0f;
     Context mContext;
-    boolean isSwipeEnabled;
+    boolean isSwipeEnabled, isComplete;
     int drawableDimen = 0;
     String subText, mainText, contentSubText, contentMaintext;
-    Float textOffset = 0.0f;
-    Float contentTextOffset = 0.0f;
+    float textOffset = 0.0f;
+    float contentTextOffset = 0.0f;
     SwipeSwitchStateListener listener;
-    Float swipeThreshold = 0.0f;
-    Float drawableOffset = 0.0f;
+    float swipeThreshold = 0.0f;
+    float drawableOffset = 0.0f;
+    float oldX = 0.0f;
 
     // Attribute keys
     private final String BACKGROUND_COLOR_KEY = "backgroundColor";
@@ -74,6 +76,7 @@ public class SwipeSwitch extends View implements View.OnTouchListener {
         pill = new RectF();
         pillDrawableRect = new RectF();
         mContext = context;
+        isComplete = false;
         setOnTouchListener(this);
         if ( attributeSet != null ) {
             try {
@@ -229,7 +232,8 @@ public class SwipeSwitch extends View implements View.OnTouchListener {
         switch (motionEvent.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 // enable swiping if valid position
-                if ( imageOffset - (drawableDimen + 50) < motionEvent.getX() && motionEvent.getX() < right )
+                oldX = motionEvent.getX();
+                if ( motionEvent.getX() < minRight && !isComplete)
                     isSwipeEnabled = true;
                 else
                     isSwipeEnabled = false;
@@ -237,26 +241,32 @@ public class SwipeSwitch extends View implements View.OnTouchListener {
             case MotionEvent.ACTION_MOVE:
                 // if swipe is enabled handle changing right here
                 if ( isSwipeEnabled ) {
-                    if ( Float.compare(motionEvent.getX(), minRight) > 0 ) {
-                        right = motionEvent.getX();
-                        invalidate();
-                    }
+                    right = minRight + (motionEvent.getX() - oldX);
+                    if ( right > getX() + getWidth() )
+                        right = getX() + getWidth();
+                    if ( right < minRight )
+                        right = minRight;
+                    invalidate();
                 }
                 break;
             case MotionEvent.ACTION_UP:
                 // if swipe is enabled
                 // - if swipe crossed threshold switch state is
-                if ( motionEvent.getX() >= getX() + getWidth() * swipeThreshold ) {
-                    right = getX() + getWidth();
-                    invalidate();
-                    if ( listener != null ) {
-                        listener.onStateOn();
+                if ( isSwipeEnabled ) {
+                    if ( right >= getX() + getWidth() * swipeThreshold ) {
+                        right = getX() + getWidth();
+                        attributes.putFloat(PILL_RADIUS, 0f);
+                        isSwipeEnabled = false;
+                        invalidate();
+                        isComplete = true;
+                        if ( listener != null ) {
+                            listener.onStateOn();
+                        } else {
+                            Log.e(TAG, "No listener attached, use setListener");
+                        }
                     } else {
-                        Log.e(TAG, "No listener attached, use setListener");
+                        onTouchUp(right, minRight, false);
                     }
-                } else {
-                    right = minRight;
-                    invalidate();
                 }
                 break;
         }
@@ -265,5 +275,18 @@ public class SwipeSwitch extends View implements View.OnTouchListener {
 
     public void setListener(SwipeSwitchStateListener listener){
         this.listener = listener;
+    }
+
+    private void onTouchUp(final float source, final float destination, boolean isComplete ) {
+        ValueAnimator animator = ValueAnimator.ofFloat(1 , 0);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                right = minRight + Math.abs( destination - source ) * (float)valueAnimator.getAnimatedValue();
+                invalidate();
+            }
+        });
+        animator.setDuration(500);
+        animator.start();
     }
 }
